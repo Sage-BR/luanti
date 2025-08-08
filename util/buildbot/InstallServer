@@ -1,0 +1,74 @@
+#!/bin/bash
+set -e
+
+BUILD_DIR="${1:-build}"
+SERVER_DIR="SERVER"
+SRC_REPO="https://github.com/luanti-org/luanti.git"
+BRANCH="stable-5"
+
+echo "Iniciando build do Luanti Server..."
+
+# Limpeza
+rm -rf "$BUILD_DIR" "$SERVER_DIR"
+mkdir -p "$BUILD_DIR" "$SERVER_DIR"
+
+# Instalar dependências para Debian/Ubuntu (ajuste conforme sua distro)
+echo "Instalando dependências..."
+sudo apt update
+sudo apt install -y \
+  build-essential ninja-build cmake git \
+  libsqlite3-dev libcurl4-openssl-dev libncurses-dev \
+  libgmp-dev libjsoncpp-dev libzstd-dev \
+  libssl-dev libpq-dev libhiredis-dev
+
+# Clonar código
+echo "Clonando branch $BRANCH do Luanti..."
+git clone -b "$BRANCH" --depth 1 "$SRC_REPO" "$BUILD_DIR/luanti"
+
+# Compilar LuaJIT (se necessário)
+echo "Compilando LuaJIT..."
+(
+  cd "$BUILD_DIR/luanti/luajit"
+  make -j$(nproc) amalg
+)
+
+# Build do server com cmake e ninja
+echo "Configurando cmake..."
+mkdir -p "$BUILD_DIR/luanti/build-server"
+cd "$BUILD_DIR/luanti/build-server"
+
+cmake .. -G Ninja \
+  -DBUILD_CLIENT=0 \
+  -DBUILD_SERVER=1 \
+  -DBUILD_UNITTESTS=0 \
+  -DBUILD_BENCHMARKS=0 \
+  -DBUILD_DOCUMENTATION=0 \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DPRECOMPILE_HEADERS=0 \
+  -DUSE_SDL2=0 \
+  -DENABLE_CURL=1 \
+  -DENABLE_CURSES=1 \
+  -DENABLE_GETTEXT=1 \
+  -DENABLE_LEVELDB=1 \
+  -DENABLE_POSTGRESQL=1 \
+  -DENABLE_REDIS=1 \
+  -DENABLE_SPATIAL=1 \
+  -DENABLE_OPENSSL=1 \
+  -DENABLE_SOUND=0 \
+  -DENABLE_LUAJIT=1 \
+  -DENABLE_SYSTEM_GMP=1 \
+  -DENABLE_SYSTEM_JSONCPP=1 \
+  -DENABLE_LTO=1 \
+  -DRUN_IN_PLACE=0 \
+  -DENABLE_UPDATE_CHECKER=0
+
+echo "Compilando com ninja..."
+ninja -j$(nproc)
+
+# Copiar arquivos para pasta SERVER
+echo "Preparando pasta $SERVER_DIR..."
+cp -a bin/luantiserver ../"$SERVER_DIR/"
+cp -a builtin ../"$SERVER_DIR/"
+
+echo "Build finalizada com sucesso!"
+echo "Servidor pronto para rodar em ./$SERVER_DIR"
