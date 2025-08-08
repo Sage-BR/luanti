@@ -25,6 +25,14 @@ sudo apt install -y \
 echo "Clonando branch $BRANCH do Luanti..."
 git clone -b "$BRANCH" --depth 1 "$SRC_REPO" "$BUILD_DIR/luanti"
 
+cd "$BUILD_DIR/luanti"
+if [ -d "luajit" ]; then
+  echo "Compilando LuaJIT..."
+  (cd luajit && make -j$(nproc) amalg)
+else
+  echo "Diretório luajit não encontrado, pulando compilação do LuaJIT"
+fi
+
 # Compilar LuaJIT (se necessário)
 echo "Compilando LuaJIT..."
 (
