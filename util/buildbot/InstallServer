@@ -1,113 +1,81 @@
 #!/bin/bash
 set -e
 
-# Configurações padrão - foco em server release otimizado
-BUILD_DIR="$PWD/build_luanti"
-SERVER_DIR="$PWD/SERVER"
-REPO_URL="https://github.com/luanti-org/luanti.git"
-REPO_DIR="$BUILD_DIR/luanti"
+# 1. Dependências
+sudo apt update
+sudo apt install -y g++ ninja-build cmake libsqlite3-dev libcurl4-openssl-dev \
+    zlib1g-dev libgmp-dev libjsoncpp-dev libzstd-dev libncurses-dev \
+    libgettextpo-dev libleveldb-dev libpq-dev libhiredis-dev libspatialindex-dev \
+    libssl-dev gettext
 
-# Variáveis CMake conforme doc oficial
-BUILD_CLIENT=FALSE
-BUILD_SERVER=TRUE
-BUILD_UNITTESTS=TRUE
-BUILD_BENCHMARKS=FALSE
-BUILD_DOCUMENTATION=TRUE
-CMAKE_BUILD_TYPE="Release"
-PRECOMPILE_HEADERS=FALSE
-USE_SDL2=TRUE
-ENABLE_CURL=ON
-ENABLE_CURSES=ON
-ENABLE_GETTEXT=ON
-ENABLE_LEVELDB=ON
-ENABLE_POSTGRESQL=ON
-ENABLE_REDIS=ON
-ENABLE_SPATIAL=ON
-ENABLE_OPENSSL=ON
-ENABLE_SOUND=ON
-ENABLE_LTO=ON
-ENABLE_LUAJIT=ON
-ENABLE_PROMETHEUS=OFF
-ENABLE_SYSTEM_GMP=ON
-ENABLE_SYSTEM_JSONCPP=ON
-RUN_IN_PLACE=FALSE
-ENABLE_UPDATE_CHECKER=TRUE
-INSTALL_DEVTEST=FALSE
-USE_GPROF=FALSE
-BUILD_WITH_TRACY=FALSE
-VERSION_EXTRA=""
+# 2. LuaJIT
+git clone https://github.com/LuaJIT/LuaJIT luajit
+cd luajit
+make amalg
+cd ..
 
-echo "=== Build Luanti Server - Iniciando ==="
+# 3. Luanti
+git clone -b stable-5 --depth 1 https://github.com/luanti-org/luanti.git
+cd luanti
+mkdir build && cd build
 
-# Criar build dir
-mkdir -p "$BUILD_DIR"
-cd "$BUILD_DIR"
+cmake .. -G Ninja \
+  -DBUILD_CLIENT=0 \
+  -DBUILD_SERVER=1 \
+  -DRUN_IN_PLACE=1 \
+  -DBUILD_UNITTESTS=0 \
+  -DLUA_INCLUDE_DIR=../../luajit/src \
+  -DLUA_LIBRARY=../../luajit/src/libluajit.a \
+  -DENABLE_CURL=ON \
+  -DENABLE_CURSES=ON \
+  -DENABLE_GETTEXT=ON \
+  -DENABLE_LEVELDB=ON \
+  -DENABLE_POSTGRESQL=ON \
+  -DENABLE_REDIS=ON \
+  -DENABLE_SPATIAL=ON \
+  -DENABLE_OPENSSL=ON \
+  -DENABLE_LTO=ON \
+  -DENABLE_SYSTEM_GMP=ON \
+  -DENABLE_SYSTEM_JSONCPP=ON \
+  -DENABLE_UPDATE_CHECKER=TRUE
 
-# Clonar ou atualizar repositório
-if [ ! -d "$REPO_DIR" ]; then
-  git clone --depth 1 "$REPO_URL"
-else
-  cd "$REPO_DIR"
-  git pull --ff-only
-  cd ..
+ninja
+cd ../..
+
+# 4. Copiar arquivos para /root/SERVER
+mkdir -p /root/SERVER
+cp -r luanti/bin luanti/builtin luanti/client luanti/games luanti/mods luanti/textures /root/SERVER
+mkdir -p /root/SERVER/worlds
+touch /root/SERVER/server.conf
+
+# Criar mundo padrão se não existir
+if [ ! -d /root/SERVER/worlds/world ]; then
+    /root/SERVER/bin/luantiserver --world /root/SERVER/worlds/world --config /root/SERVER/server.conf --gameid minetest --mapgen v7 --quit
 fi
 
-cd "$REPO_DIR"
+# 5. Criar service
+cat <<EOF | sudo tee /etc/systemd/system/luanti.service
+[Unit]
+Description=Luanti Game Server
+After=network.target
 
-# Limpar build anterior
-rm -rf build
-mkdir build
-cd build
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/SERVER
+ExecStart=/root/SERVER/bin/luantiserver --world /root/SERVER/worlds/world --config /root/SERVER/server.conf
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
-# Rodar cmake com as flags
-cmake .. \
-  -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
-  -DBUILD_CLIENT=$BUILD_CLIENT \
-  -DBUILD_SERVER=$BUILD_SERVER \
-  -DBUILD_UNITTESTS=$BUILD_UNITTESTS \
-  -DBUILD_BENCHMARKS=$BUILD_BENCHMARKS \
-  -DBUILD_DOCUMENTATION=$BUILD_DOCUMENTATION \
-  -DPRECOMPILE_HEADERS=$PRECOMPILE_HEADERS \
-  -DUSE_SDL2=$USE_SDL2 \
-  -DENABLE_CURL=$ENABLE_CURL \
-  -DENABLE_CURSES=$ENABLE_CURSES \
-  -DENABLE_GETTEXT=$ENABLE_GETTEXT \
-  -DENABLE_LEVELDB=$ENABLE_LEVELDB \
-  -DENABLE_POSTGRESQL=$ENABLE_POSTGRESQL \
-  -DENABLE_REDIS=$ENABLE_REDIS \
-  -DENABLE_SPATIAL=$ENABLE_SPATIAL \
-  -DENABLE_OPENSSL=$ENABLE_OPENSSL \
-  -DENABLE_SOUND=$ENABLE_SOUND \
-  -DENABLE_LTO=$ENABLE_LTO \
-  -DENABLE_LUAJIT=$ENABLE_LUAJIT \
-  -DENABLE_PROMETHEUS=$ENABLE_PROMETHEUS \
-  -DENABLE_SYSTEM_GMP=$ENABLE_SYSTEM_GMP \
-  -DENABLE_SYSTEM_JSONCPP=$ENABLE_SYSTEM_JSONCPP \
-  -DRUN_IN_PLACE=$RUN_IN_PLACE \
-  -DENABLE_UPDATE_CHECKER=$ENABLE_UPDATE_CHECKER \
-  -DINSTALL_DEVTEST=$INSTALL_DEVTEST \
-  -DUSE_GPROF=$USE_GPROF \
-  -DBUILD_WITH_TRACY=$BUILD_WITH_TRACY \
-  -DVERSION_EXTRA="$VERSION_EXTRA"
+[Install]
+WantedBy=multi-user.target
+EOF
 
-# Compilar server apenas
-cmake --build . --target luantiserver --parallel $(nproc)
+# 6. Ativar service
+sudo systemctl daemon-reload
+sudo systemctl enable luanti.service
+sudo systemctl start luanti.service
 
-# Limpar pasta SERVER antiga e criar nova estrutura
-rm -rf "$SERVER_DIR"
-mkdir -p "$SERVER_DIR/games"
-mkdir -p "$SERVER_DIR/worlds"
-
-# Copiar binário do servidor
-cp ../bin/luantiserver "$SERVER_DIR/"
-
-# Copiar jogo(s) padrão se houver
-if [ -d ../games ]; then
-  cp -r ../games/* "$SERVER_DIR/games/" 2>/dev/null || true
-fi
-
-echo "=== Build concluído! Arquivos do servidor em: $SERVER_DIR ==="
-echo "Estrutura criada:"
-echo "- luantiserver (executável)"
-echo "- games/ (subgames instalados)"
-echo "- worlds/ (seus mundos irão aqui)"
+echo "✅ Servidor Luanti instalado e iniciado."
