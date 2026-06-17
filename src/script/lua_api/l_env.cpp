@@ -10,12 +10,13 @@
 #include "lua_api/l_noise.h"
 #include "lua_api/l_vmanip.h"
 #include "lua_api/l_object.h"
+#include "common/helper.h"
 #include "common/c_converter.h"
 #include "common/c_content.h"
 #include "scripting_server.h"
-#include "environment.h"
 #include "mapblock.h"
 #include "server.h"
+#include "serverenvironment.h"
 #include "nodedef.h"
 #include "daynightratio.h"
 #include "util/pointedthing.h"
@@ -24,6 +25,7 @@
 #include "pathfinder.h"
 #include "face_position_cache.h"
 #include "remoteplayer.h"
+#include "servermap.h"
 #include "server/luaentity_sao.h"
 #include "server/player_sao.h"
 #include "util/string.h"
@@ -155,10 +157,17 @@ void LuaEmergeAreaCallback(v3s16 blockpos, EmergeAction action, void *param)
 		delete state;
 }
 
-/* Exported functions */
+/* Exported functions
 
-// set_node(pos, node)
-// pos = {x=num, y=num, z=num}
+The following functions will be available in the Lua API.
+
+Naming convention:
+
+    ModApiEnv::l_my_function in C++ will be core.my_function in Lua.
+
+See doc/lua_api.md for a documentation on syntax.
+*/
+
 int ModApiEnv::l_set_node(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -172,8 +181,6 @@ int ModApiEnv::l_set_node(lua_State *L)
 	return 1;
 }
 
-// bulk_set_node([pos1, pos2, ...], node)
-// pos = {x=num, y=num, z=num}
 int ModApiEnv::l_bulk_set_node(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -209,8 +216,6 @@ int ModApiEnv::l_add_node(lua_State *L)
 	return l_set_node(L);
 }
 
-// remove_node(pos)
-// pos = {x=num, y=num, z=num}
 int ModApiEnv::l_remove_node(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -223,8 +228,6 @@ int ModApiEnv::l_remove_node(lua_State *L)
 	return 1;
 }
 
-// swap_node(pos, node)
-// pos = {x=num, y=num, z=num}
 int ModApiEnv::l_swap_node(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -238,8 +241,6 @@ int ModApiEnv::l_swap_node(lua_State *L)
 	return 1;
 }
 
-// bulk_swap_node([pos1, pos2, ...], node)
-// pos = {x=num, y=num, z=num}
 int ModApiEnv::l_bulk_swap_node(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -263,7 +264,6 @@ int ModApiEnv::l_bulk_swap_node(lua_State *L)
 	return 1;
 }
 
-// get_node_raw(x, y, z) -> content, param1, param2, pos_ok
 int ModApiEnv::l_get_node_raw(lua_State *L)
 {
 	GET_PLAIN_ENV_PTR;
@@ -292,9 +292,6 @@ int ModApiEnv::l_get_node_raw(lua_State *L)
 	return 4;
 }
 
-// get_node_light(pos, timeofday)
-// pos = {x=num, y=num, z=num}
-// timeofday: nil = current time, 0 = night, 0.5 = day
 int ModApiEnv::l_get_node_light(lua_State *L)
 {
 	GET_PLAIN_ENV_PTR;
@@ -319,9 +316,6 @@ int ModApiEnv::l_get_node_light(lua_State *L)
 }
 
 
-// get_natural_light(pos, timeofday)
-// pos = {x=num, y=num, z=num}
-// timeofday: nil = current time, 0 = night, 0.5 = day
 int ModApiEnv::l_get_natural_light(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -358,8 +352,6 @@ int ModApiEnv::l_get_natural_light(lua_State *L)
 	return 1;
 }
 
-// place_node(pos, node, [placer])
-// pos = {x=num, y=num, z=num}
 int ModApiEnv::l_place_node(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -401,8 +393,6 @@ int ModApiEnv::l_place_node(lua_State *L)
 	return 1;
 }
 
-// dig_node(pos, [digger])
-// pos = {x=num, y=num, z=num}
 int ModApiEnv::l_dig_node(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -433,8 +423,6 @@ int ModApiEnv::l_dig_node(lua_State *L)
 	return 1;
 }
 
-// punch_node(pos, [puncher])
-// pos = {x=num, y=num, z=num}
 int ModApiEnv::l_punch_node(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -466,8 +454,6 @@ int ModApiEnv::l_punch_node(lua_State *L)
 	return 1;
 }
 
-// get_node_max_level(pos)
-// pos = {x=num, y=num, z=num}
 int ModApiEnv::l_get_node_max_level(lua_State *L)
 {
 	GET_PLAIN_ENV_PTR;
@@ -478,8 +464,6 @@ int ModApiEnv::l_get_node_max_level(lua_State *L)
 	return 1;
 }
 
-// get_node_level(pos)
-// pos = {x=num, y=num, z=num}
 int ModApiEnv::l_get_node_level(lua_State *L)
 {
 	GET_PLAIN_ENV_PTR;
@@ -490,9 +474,6 @@ int ModApiEnv::l_get_node_level(lua_State *L)
 	return 1;
 }
 
-// set_node_level(pos, level)
-// pos = {x=num, y=num, z=num}
-// level: 0..63
 int ModApiEnv::l_set_node_level(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -507,9 +488,6 @@ int ModApiEnv::l_set_node_level(lua_State *L)
 	return 1;
 }
 
-// add_node_level(pos, level)
-// pos = {x=num, y=num, z=num}
-// level: -127..127
 int ModApiEnv::l_add_node_level(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -524,10 +502,6 @@ int ModApiEnv::l_add_node_level(lua_State *L)
 	return 1;
 }
 
-// get_node_boxes(box_type, pos, [node]) -> table
-// box_type = string
-// pos = {x=num, y=num, z=num}
-// node = {name=string, param1=num, param2=num} or nil
 int ModApiEnv::l_get_node_boxes(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -558,7 +532,6 @@ int ModApiEnv::l_get_node_boxes(lua_State *L)
 	return 1;
 }
 
-// find_nodes_with_meta(pos1, pos2)
 int ModApiEnv::l_find_nodes_with_meta(lua_State *L)
 {
 	GET_PLAIN_ENV_PTR;
@@ -575,7 +548,6 @@ int ModApiEnv::l_find_nodes_with_meta(lua_State *L)
 	return 1;
 }
 
-// get_meta(pos)
 int ModApiEnv::l_get_meta(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -586,7 +558,6 @@ int ModApiEnv::l_get_meta(lua_State *L)
 	return 1;
 }
 
-// get_node_timer(pos)
 int ModApiEnv::l_get_node_timer(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -597,8 +568,6 @@ int ModApiEnv::l_get_node_timer(lua_State *L)
 	return 1;
 }
 
-// add_entity(pos, entityname, [staticdata]) -> ObjectRef or nil
-// pos = {x=num, y=num, z=num}
 int ModApiEnv::l_add_entity(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -622,8 +591,6 @@ int ModApiEnv::l_add_entity(lua_State *L)
 	return 1;
 }
 
-// add_item(pos, itemstack or itemstring or table) -> ObjectRef or nil
-// pos = {x=num, y=num, z=num}
 int ModApiEnv::l_add_item(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -652,7 +619,6 @@ int ModApiEnv::l_add_item(lua_State *L)
 	return 1;
 }
 
-// get_connected_players()
 int ModApiEnv::l_get_connected_players(lua_State *L)
 {
 	ServerEnvironment *env = (ServerEnvironment *) getEnv(L);
@@ -675,7 +641,6 @@ int ModApiEnv::l_get_connected_players(lua_State *L)
 	return 1;
 }
 
-// get_player_by_name(name)
 int ModApiEnv::l_get_player_by_name(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -693,7 +658,6 @@ int ModApiEnv::l_get_player_by_name(lua_State *L)
 	return 1;
 }
 
-// get_objects_inside_radius(pos, radius)
 int ModApiEnv::l_get_objects_inside_radius(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -717,7 +681,6 @@ int ModApiEnv::l_get_objects_inside_radius(lua_State *L)
 	return 1;
 }
 
-// get_objects_in_area(pos, minp, maxp)
 int ModApiEnv::l_get_objects_in_area(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -742,8 +705,6 @@ int ModApiEnv::l_get_objects_in_area(lua_State *L)
 	return 1;
 }
 
-// set_timeofday(val)
-// val = 0...1
 int ModApiEnv::l_set_timeofday(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -761,7 +722,6 @@ int ModApiEnv::l_set_timeofday(lua_State *L)
 	return 0;
 }
 
-// get_timeofday() -> 0...1
 int ModApiEnv::l_get_timeofday(lua_State *L)
 {
 	GET_PLAIN_ENV_PTR;
@@ -770,7 +730,6 @@ int ModApiEnv::l_get_timeofday(lua_State *L)
 	return 1;
 }
 
-// get_day_count() -> int
 int ModApiEnv::l_get_day_count(lua_State *L)
 {
 	GET_PLAIN_ENV_PTR;
@@ -779,7 +738,6 @@ int ModApiEnv::l_get_day_count(lua_State *L)
 	return 1;
 }
 
-// get_gametime()
 int ModApiEnv::l_get_gametime(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -792,14 +750,10 @@ void ModApiEnvBase::collectNodeIds(lua_State *L, int idx, const NodeDefManager *
 	std::vector<content_t> &filter)
 {
 	if (lua_istable(L, idx)) {
-		lua_pushnil(L);
-		while (lua_next(L, idx) != 0) {
-			// key at index -2 and value at index -1
+		LuaHelper::for_ipairs(L, idx, [&]() {
 			luaL_checktype(L, -1, LUA_TSTRING);
 			ndef->getIds(readParam<std::string>(L, -1), filter);
-			// removes value, keeps key for next iteration
-			lua_pop(L, 1);
-		}
+		});
 	} else if (lua_isstring(L, idx)) {
 		ndef->getIds(readParam<std::string>(L, idx), filter);
 	}
@@ -823,8 +777,6 @@ int ModApiEnvBase::findNodeNear(lua_State *L, v3s16 pos, int radius,
 	return 0;
 }
 
-// find_node_near(pos, radius, nodenames, [search_center]) -> pos or nil
-// nodenames: eg. {"ignore", "group:tree"} or "default:dirt"
 int ModApiEnv::l_find_node_near(lua_State *L)
 {
 	GET_PLAIN_ENV_PTR;
@@ -938,7 +890,6 @@ int ModApiEnvBase::findNodesInArea(lua_State *L, const NodeDefManager *ndef,
 	}
 }
 
-// find_nodes_in_area(minp, maxp, nodenames, [grouped])
 int ModApiEnv::l_find_nodes_in_area(lua_State *L)
 {
 	GET_PLAIN_ENV_PTR;
@@ -995,8 +946,6 @@ int ModApiEnvBase::findNodesInAreaUnderAir(lua_State *L, v3s16 minp, v3s16 maxp,
 	return 1;
 }
 
-// find_nodes_in_area_under_air(minp, maxp, nodenames) -> list of positions
-// nodenames: e.g. {"ignore", "group:tree"} or "default:dirt"
 int ModApiEnv::l_find_nodes_in_area_under_air(lua_State *L)
 {
 	/* TODO: A similar but generalized (and therefore slower) version of this
@@ -1030,8 +979,6 @@ int ModApiEnv::l_find_nodes_in_area_under_air(lua_State *L)
 	return findNodesInAreaUnderAir(L, minp, maxp, filter, getNode);
 }
 
-// get_value_noise(seeddiff, octaves, persistence, scale)
-// returns world-specific ValueNoise
 int ModApiEnv::l_get_value_noise(lua_State *L)
 {
 	GET_ENV_PTR_NO_MAP_LOCK;
@@ -1056,8 +1003,6 @@ int ModApiEnv::l_get_value_noise(lua_State *L)
 	return 1;
 }
 
-// get_value_noise_map(noiseparams, size)
-// returns world-specific ValueNoiseMap
 int ModApiEnv::l_get_value_noise_map(lua_State *L)
 {
 	GET_ENV_PTR_NO_MAP_LOCK;
@@ -1075,16 +1020,11 @@ int ModApiEnv::l_get_value_noise_map(lua_State *L)
 	return 1;
 }
 
-// get_voxel_manip()
-// returns voxel manipulator
 int ModApiEnv::l_get_voxel_manip(lua_State *L)
 {
 	return LuaVoxelManip::create_object(L);
 }
 
-// clear_objects([options])
-// clear all objects in the environment
-// where options = {mode = "full" or "quick"}
 int ModApiEnv::l_clear_objects(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -1099,7 +1039,6 @@ int ModApiEnv::l_clear_objects(lua_State *L)
 	return 0;
 }
 
-// line_of_sight(pos1, pos2) -> true/false, pos
 int ModApiEnv::l_line_of_sight(lua_State *L)
 {
 	GET_PLAIN_ENV_PTR;
@@ -1120,7 +1059,6 @@ int ModApiEnv::l_line_of_sight(lua_State *L)
 	return 1;
 }
 
-// fix_light(p1, p2)
 int ModApiEnv::l_fix_light(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -1153,12 +1091,9 @@ int ModApiEnv::l_raycast(lua_State *L)
 	return LuaRaycast::create_object(L);
 }
 
-// load_area(p1, [p2])
-// load mapblocks in area p1..p2, but do not generate map
 int ModApiEnv::l_load_area(lua_State *L)
 {
 	GET_ENV_PTR;
-	MAP_LOCK_REQUIRED;
 
 	Map *map = &(env->getMap());
 	v3s16 bp1 = getNodeBlockPos(check_v3s16(L, 1));
@@ -1177,8 +1112,6 @@ int ModApiEnv::l_load_area(lua_State *L)
 	return 0;
 }
 
-// emerge_area(p1, p2, [callback, context])
-// emerge mapblocks in area p1..p2, calls callback with context upon completion
 int ModApiEnv::l_emerge_area(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -1223,8 +1156,6 @@ int ModApiEnv::l_emerge_area(lua_State *L)
 	return 0;
 }
 
-// delete_area(p1, p2)
-// delete mapblocks in area p1..p2
 int ModApiEnv::l_delete_area(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -1256,8 +1187,6 @@ int ModApiEnv::l_delete_area(lua_State *L)
 	return 1;
 }
 
-// find_path(pos1, pos2, searchdistance,
-//     max_jump, max_drop, algorithm) -> table containing path
 int ModApiEnv::l_find_path(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -1297,7 +1226,6 @@ int ModApiEnv::l_find_path(lua_State *L)
 	return 0;
 }
 
-// spawn_tree(pos, treedef)
 int ModApiEnv::l_spawn_tree(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -1320,7 +1248,6 @@ int ModApiEnv::l_spawn_tree(lua_State *L)
 	return 1;
 }
 
-// transforming_liquid_add(pos)
 int ModApiEnv::l_transforming_liquid_add(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -1330,8 +1257,6 @@ int ModApiEnv::l_transforming_liquid_add(lua_State *L)
 	return 1;
 }
 
-// forceload_block(blockpos)
-// blockpos = {x=num, y=num, z=num}
 int ModApiEnv::l_forceload_block(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -1339,6 +1264,59 @@ int ModApiEnv::l_forceload_block(lua_State *L)
 	v3s16 blockpos = read_v3s16(L, 1);
 	env->getForceloadedBlocks()->insert(blockpos);
 	return 0;
+}
+
+// get_loaded_blocks()
+int ModApiEnv::l_get_loaded_blocks(lua_State *L)
+{
+	GET_ENV_PTR;
+
+	std::vector<v3s16> loaded_blocks;
+	env->getServerMap().listAllLoadedBlocks(loaded_blocks);
+
+	lua_createtable(L, loaded_blocks.size(), 0);
+	int index = 0;
+	for (const v3s16 &p : loaded_blocks) {
+		push_v3s16(L, p);
+		lua_rawseti(L, -2, ++index);
+	}
+
+	return 1;
+}
+
+// get_loadable_blocks()
+int ModApiEnv::l_get_loadable_blocks(lua_State *L)
+{
+	GET_ENV_PTR;
+
+	std::vector<v3s16> loadable_blocks;
+	env->getServerMap().listAllLoadableBlocks(loadable_blocks);
+
+	lua_createtable(L, loadable_blocks.size(), 0);
+	int index = 0;
+	for (const v3s16 &p : loadable_blocks) {
+		push_v3s16(L, p);
+		lua_rawseti(L, -2, ++index);
+	}
+
+	return 1;
+}
+
+// get_active_blocks()
+int ModApiEnv::l_get_active_blocks(lua_State *L)
+{
+	GET_ENV_PTR;
+
+	const auto &active_blocks = env->getActiveBlocks();
+
+	lua_createtable(L, active_blocks.size(), 0);
+	int index = 0;
+	for (const v3s16 &p : active_blocks) {
+		push_v3s16(L, p);
+		lua_rawseti(L, -2, ++index);
+	}
+
+	return 1;
 }
 
 // compare_block_status(nodepos)
@@ -1359,8 +1337,6 @@ int ModApiEnv::l_compare_block_status(lua_State *L)
 }
 
 
-// forceload_free_block(blockpos)
-// blockpos = {x=num, y=num, z=num}
 int ModApiEnv::l_forceload_free_block(lua_State *L)
 {
 	GET_ENV_PTR;
@@ -1370,10 +1346,10 @@ int ModApiEnv::l_forceload_free_block(lua_State *L)
 	return 0;
 }
 
-// get_translated_string(lang_code, string)
 int ModApiEnv::l_get_translated_string(lua_State * L)
 {
-	GET_ENV_PTR;
+	NO_MAP_LOCK_REQUIRED;
+
 	std::string lang_code = luaL_checkstring(L, 1);
 	std::string string = luaL_checkstring(L, 2);
 
@@ -1432,6 +1408,9 @@ void ModApiEnv::Initialize(lua_State *L, int top)
 	API_FCT(raycast);
 	API_FCT(transforming_liquid_add);
 	API_FCT(forceload_block);
+	API_FCT(get_loaded_blocks);
+	API_FCT(get_loadable_blocks);
+	API_FCT(get_active_blocks);
 	API_FCT(forceload_free_block);
 	API_FCT(compare_block_status);
 	API_FCT(get_translated_string);
@@ -1456,7 +1435,6 @@ void ModApiEnv::InitializeClient(lua_State *L, int top)
 	if (!vm)                     \
 		return 0
 
-// get_node_or_nil(pos)
 int ModApiEnvVM::l_get_node_or_nil(lua_State *L)
 {
 	GET_VM_PTR;
@@ -1469,7 +1447,6 @@ int ModApiEnvVM::l_get_node_or_nil(lua_State *L)
 	return 1;
 }
 
-// get_node_max_level(pos)
 int ModApiEnvVM::l_get_node_max_level(lua_State *L)
 {
 	GET_VM_PTR;
@@ -1480,7 +1457,6 @@ int ModApiEnvVM::l_get_node_max_level(lua_State *L)
 	return 1;
 }
 
-// get_node_level(pos)
 int ModApiEnvVM::l_get_node_level(lua_State *L)
 {
 	GET_VM_PTR;
@@ -1491,7 +1467,6 @@ int ModApiEnvVM::l_get_node_level(lua_State *L)
 	return 1;
 }
 
-// set_node_level(pos, level)
 int ModApiEnvVM::l_set_node_level(lua_State *L)
 {
 	GET_VM_PTR;
@@ -1506,7 +1481,6 @@ int ModApiEnvVM::l_set_node_level(lua_State *L)
 	return 1;
 }
 
-// add_node_level(pos, level)
 int ModApiEnvVM::l_add_node_level(lua_State *L)
 {
 	GET_VM_PTR;
@@ -1521,7 +1495,6 @@ int ModApiEnvVM::l_add_node_level(lua_State *L)
 	return 1;
 }
 
-// find_node_near(pos, radius, nodenames, [search_center])
 int ModApiEnvVM::l_find_node_near(lua_State *L)
 {
 	GET_VM_PTR;
@@ -1540,7 +1513,6 @@ int ModApiEnvVM::l_find_node_near(lua_State *L)
 	return findNodeNear(L, pos, radius, filter, start_radius, getNode);
 }
 
-// find_nodes_in_area(minp, maxp, nodenames, [grouped])
 int ModApiEnvVM::l_find_nodes_in_area(lua_State *L)
 {
 	GET_VM_PTR;
@@ -1580,7 +1552,6 @@ int ModApiEnvVM::l_find_nodes_in_area(lua_State *L)
 	return findNodesInArea(L, ndef, filter, grouped, iterate);
 }
 
-// find_nodes_in_area_under_air(minp, maxp, nodenames)
 int ModApiEnvVM::l_find_nodes_in_area_under_air(lua_State *L)
 {
 	GET_VM_PTR;
@@ -1601,7 +1572,6 @@ int ModApiEnvVM::l_find_nodes_in_area_under_air(lua_State *L)
 	return findNodesInAreaUnderAir(L, minp, maxp, filter, getNode);
 }
 
-// spawn_tree(pos, treedef)
 int ModApiEnvVM::l_spawn_tree(lua_State *L)
 {
 	GET_VM_PTR;

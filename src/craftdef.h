@@ -4,12 +4,12 @@
 
 #pragma once
 
-#include <string>
-#include <iostream>
-#include <vector>
-#include <utility>
 #include "gamedef.h"
-#include "inventory.h"
+
+#include <string>
+#include <vector>
+
+struct ItemStack;
 
 /*
 	Crafting methods.
@@ -55,15 +55,13 @@ const int craft_hash_type_max = (int) CRAFT_HASH_TYPE_UNHASHED;
 struct CraftInput
 {
 	CraftMethod method = CRAFT_METHOD_NORMAL;
-	unsigned int width = 0;
+	unsigned int width = 0; //< used only for shaped recipes
 	std::vector<ItemStack> items;
 
 	CraftInput() = default;
 
 	CraftInput(CraftMethod method_, unsigned int width_,
-			const std::vector<ItemStack> &items_):
-		method(method_), width(width_), items(items_)
-	{}
+			const std::vector<ItemStack> &items_);
 
 	// Returns true if all items are empty.
 	bool empty() const;

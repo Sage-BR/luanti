@@ -7,17 +7,17 @@
 #include "lua_api/l_vmanip.h"
 #include "common/c_converter.h"
 #include "common/c_content.h"
+#include "common/helper.h"
 #include "cpp_api/s_security.h"
-#include "util/serialize.h"
 #include "server.h"
-#include "environment.h"
+#include "serverenvironment.h"
+#include "servermap.h"
 #include "emerge_internal.h"
+#include "map_settings_manager.h"
 #include "mapgen/mg_biome.h"
 #include "mapgen/mg_ore.h"
 #include "mapgen/mg_decoration.h"
 #include "mapgen/mg_schematic.h"
-#include "mapgen/mapgen_v5.h"
-#include "mapgen/mapgen_v7.h"
 #include "mapgen/treegen.h"
 #include "filesys.h"
 #include "settings.h"
@@ -82,8 +82,6 @@ ObjDef *get_objdef(lua_State *L, int index, const ObjDefManager *objmgr);
 Biome *get_or_load_biome(lua_State *L, int index,
 	BiomeManager *biomemgr);
 Biome *read_biome_def(lua_State *L, int index, const NodeDefManager *ndef);
-size_t get_biome_list(lua_State *L, int index,
-	BiomeManager *biomemgr, std::unordered_set<biome_t> *biome_id_list);
 
 Schematic *get_or_load_schematic(lua_State *L, int index,
 	SchematicManager *schemmgr, StringMap *replace_names);
@@ -231,9 +229,9 @@ bool read_schematic_def(lua_State *L, int index,
 	std::unordered_map<std::string, content_t> name_id_map;
 
 	u32 i = 0;
-	for (lua_pushnil(L); lua_next(L, -2); i++, lua_pop(L, 1)) {
+	LuaHelper::for_ipairs(L, -1, [&]() {
 		if (i >= numnodes)
-			continue;
+			return;
 
 		//// Read name
 		std::string name;
@@ -267,7 +265,8 @@ bool read_schematic_def(lua_State *L, int index,
 
 		//// Actually set the node in the schematic
 		schem->schemdata[i] = MapNode(name_index, param1, param2);
-	}
+		++i;
+	});
 
 	if (i != numnodes) {
 		errorstream << "read_schematic_def: incorrect number of "
@@ -283,15 +282,16 @@ bool read_schematic_def(lua_State *L, int index,
 
 	lua_getfield(L, index, "yslice_prob");
 	if (lua_istable(L, -1)) {
-		for (lua_pushnil(L); lua_next(L, -2); lua_pop(L, 1)) {
+		LuaHelper::for_ipairs(L, -1, [&]() {
 			u16 ypos;
 			if (!getintfield(L, -1, "ypos", ypos) || (ypos >= size.Y) ||
 				!getintfield(L, -1, "prob", schem->slice_probs[ypos]))
-				continue;
+				return;
 
 			schem->slice_probs[ypos] >>= 1;
-		}
+		});
 	}
+	lua_pop(L, 1);
 
 	return true;
 }
@@ -409,8 +409,8 @@ Biome *read_biome_def(lua_State *L, int index, const NodeDefManager *ndef)
 }
 
 
-size_t get_biome_list(lua_State *L, int index,
-	BiomeManager *biomemgr, std::unordered_set<biome_t> *biome_id_list)
+static size_t get_biome_list(lua_State *L, int index,
+	BiomeManager *biomemgr, std::unordered_set<biome_t> *biome_ids)
 {
 	if (index < 0)
 		index = lua_gettop(L) + 1 + index;
@@ -434,25 +434,25 @@ size_t get_biome_list(lua_State *L, int index,
 			return 1;
 		}
 
-		biome_id_list->insert(biome->index);
+		biome_ids->insert(biome->index);
 		return 0;
 	}
 
 	// returns number of failed resolutions
 	size_t fail_count = 0;
 
-	for (lua_pushnil(L); lua_next(L, index); lua_pop(L, 1)) {
+	LuaHelper::for_ipairs(L, index, [&]() {
 		Biome *biome = get_or_load_biome(L, -1, biomemgr);
 		if (!biome) {
 			fail_count++;
 			warningstream << "get_biome_list: failed to get biome '"
 				<< (lua_isstring(L, -1) ? lua_tostring(L, -1) : "")
 				<< "'" << std::endl;
-			continue;
+			return;
 		}
 
-		biome_id_list->insert(biome->index);
-	}
+		biome_ids->insert(biome->index);
+	});
 
 	return fail_count;
 }
@@ -849,28 +849,27 @@ int ModApiMapgen::l_get_mapgen_edges(lua_State *L)
 	// MapSettingsManager::makeMapgenParams cannot be used here because it would
 	// make mapgen settings immutable from then on. Mapgen settings should stay
 	// mutable until after mod loading ends.
+	std::unique_ptr<MapgenParams> params(settingsmgr->makeMapgenParamsCopy());
 
 	s16 mapgen_limit;
 	if (lua_isnumber(L, 1)) {
-		 mapgen_limit = lua_tointeger(L, 1);
+		mapgen_limit = lua_tointeger(L, 1);
 	} else {
-		std::string mapgen_limit_str;
-		settingsmgr->getMapSetting("mapgen_limit", &mapgen_limit_str);
-		mapgen_limit = stoi(mapgen_limit_str, 0, MAX_MAP_GENERATION_LIMIT);
+		mapgen_limit = params->mapgen_limit;
 	}
 
-	s16 chunksize;
+	v3s16 chunksize;
 	if (lua_isnumber(L, 2)) {
-		chunksize = lua_tointeger(L, 2);
+		chunksize = v3s16(lua_tointeger(L, 2));
+	} else if (lua_istable(L, 2)) {
+		chunksize = check_v3s16(L, 2);
 	} else {
-		std::string chunksize_str;
-		settingsmgr->getMapSetting("chunksize", &chunksize_str);
-		chunksize = stoi(chunksize_str, 1, 10);
+		chunksize = params->chunksize;
 	}
 
-	std::pair<s16, s16> edges = get_mapgen_edges(mapgen_limit, chunksize);
-	push_v3s16(L, v3s16(1, 1, 1) * edges.first);
-	push_v3s16(L, v3s16(1, 1, 1) * edges.second);
+	auto edges = get_mapgen_edges(mapgen_limit, chunksize);
+	push_v3s16(L, edges.first);
+	push_v3s16(L, edges.second);
 	return 2;
 }
 
@@ -884,12 +883,9 @@ int ModApiMapgen::l_get_mapgen_chunksize(lua_State *L)
 	// MapSettingsManager::makeMapgenParams cannot be used here because it would
 	// make mapgen settings immutable from then on. Mapgen settings should stay
 	// mutable until after mod loading ends.
+	std::unique_ptr<MapgenParams> params(settingsmgr->makeMapgenParamsCopy());
 
-	std::string chunksize_str;
-	settingsmgr->getMapSetting("chunksize", &chunksize_str);
-	s16 chunksize = stoi(chunksize_str, 1, 10);
-
-	push_v3s16(L, {chunksize, chunksize, chunksize});
+	push_v3s16(L, params->chunksize);
 	return 1;
 }
 
@@ -1031,20 +1027,16 @@ int ModApiMapgen::l_set_gen_notify(lua_State *L)
 	}
 
 	if (lua_istable(L, 2)) {
-		lua_pushnil(L);
-		while (lua_next(L, 2)) {
+		LuaHelper::for_ipairs(L, 2, [&]() {
 			if (lua_isnumber(L, -1))
 				emerge->gen_notify_on_deco_ids.insert((u32)lua_tonumber(L, -1));
-			lua_pop(L, 1);
-		}
+		});
 	}
 
 	if (lua_istable(L, 3)) {
-		lua_pushnil(L);
-		while (lua_next(L, 3)) {
+		LuaHelper::for_ipairs(L, 3, [&]() {
 			emerge->gen_notify_on_custom.insert(readParam<std::string>(L, -1));
-			lua_pop(L, 1);
-		}
+		});
 	}
 
 	// Clear sets if relevant flag disabled
@@ -1611,7 +1603,7 @@ int ModApiMapgen::l_generate_ores(lua_State *L)
 }
 
 
-// generate_decorations(vm, p1, p2)
+// generate_decorations(vm, p1, p2, use_mapgen_biomes)
 int ModApiMapgen::l_generate_decorations(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
@@ -1621,26 +1613,56 @@ int ModApiMapgen::l_generate_decorations(lua_State *L)
 		return 0;
 
 	DecorationManager *decomgr;
-	if (auto mg = getMapgen(L))
+	Mapgen mg, *mgp = nullptr;
+	bool use_mapgen_biomes = readParam<bool>(L, 4, false);
+	MMVManip *oldvm = nullptr, *vm = checkObject<LuaVoxelManip>(L, 1)->vm;
+	if (auto mg = getMapgen(L)) {
 		decomgr = mg->m_emerge->decomgr;
-	else
+		if (use_mapgen_biomes) {
+			mgp = mg;
+			oldvm = mgp->vm;
+			if (!oldvm) {
+				goto no_vm;
+			}
+		}
+	} else {
+		if (use_mapgen_biomes) {
+			no_vm:
+			throw LuaError("use_mapgen_biomes specified outside a "
+				       "map generation context");
+		}
 		decomgr = emerge->decomgr;
+	}
+	if (!mgp) {
+		mgp = &mg;
+		// Intentionally truncates to s32, see Mapgen::Mapgen()
+		mg.seed = (s32)emerge->mgparams->seed;
+		mg.ndef = emerge->ndef;
+	}
 
-	Mapgen mg;
-	// Intentionally truncates to s32, see Mapgen::Mapgen()
-	mg.seed = (s32)emerge->mgparams->seed;
-	mg.vm   = checkObject<LuaVoxelManip>(L, 1)->vm;
-	mg.ndef = emerge->ndef;
-
-	v3s16 pmin = lua_istable(L, 2) ? check_v3s16(L, 2) :
-			mg.vm->m_area.MinEdge + v3s16(1,1,1) * MAP_BLOCKSIZE;
-	v3s16 pmax = lua_istable(L, 3) ? check_v3s16(L, 3) :
-			mg.vm->m_area.MaxEdge - v3s16(1,1,1) * MAP_BLOCKSIZE;
+	const v3s16 default_pmin = vm->m_area.MinEdge + MAP_BLOCKSIZE,
+				default_pmax = vm->m_area.MaxEdge - MAP_BLOCKSIZE;
+	v3s16 pmin = lua_istable(L, 2) ? check_v3s16(L, 2) : default_pmin;
+	v3s16 pmax = lua_istable(L, 3) ? check_v3s16(L, 3) : default_pmax;
 	sortBoxVerticies(pmin, pmax);
+	if (use_mapgen_biomes) {
+		assert(oldvm);
+		const v3s16 required_pmin = oldvm->m_area.MinEdge + MAP_BLOCKSIZE,
+			required_pmax = oldvm->m_area.MaxEdge - MAP_BLOCKSIZE;
+		if (pmin != required_pmin || pmax != required_pmax)
+			throw LuaError("use_mapgen_biomes requires extents matching chunk area");
+	}
 
 	u32 blockseed = Mapgen::getBlockSeed(pmin, mg.seed);
 
-	decomgr->placeAllDecos(&mg, blockseed, pmin, pmax);
+	mgp->vm = vm;
+	try {
+		decomgr->placeAllDecos(mgp, blockseed, pmin, pmax);
+	} catch (...) {
+		mgp->vm = oldvm;
+		throw;
+	}
+	mgp->vm = oldvm;
 
 	return 0;
 }
@@ -1649,14 +1671,13 @@ int ModApiMapgen::l_generate_decorations(lua_State *L)
 // create_schematic(p1, p2, probability_list, filename, y_slice_prob_list)
 int ModApiMapgen::l_create_schematic(lua_State *L)
 {
-	MAP_LOCK_REQUIRED;
+	GET_ENV_PTR;
 
 	const NodeDefManager *ndef = getServer(L)->getNodeDefManager();
 
 	const char *filename = luaL_checkstring(L, 4);
 	CHECK_SECURE_PATH(L, filename, true);
 
-	Map *map = &(getEnv(L)->getMap());
 	Schematic schem;
 
 	v3s16 p1 = check_v3s16(L, 1);
@@ -1665,8 +1686,7 @@ int ModApiMapgen::l_create_schematic(lua_State *L)
 
 	std::vector<std::pair<v3s16, u8> > prob_list;
 	if (lua_istable(L, 3)) {
-		lua_pushnil(L);
-		while (lua_next(L, 3)) {
+		LuaHelper::for_ipairs(L, 3, [&]() {
 			if (lua_istable(L, -1)) {
 				lua_getfield(L, -1, "pos");
 				v3s16 pos = check_v3s16(L, -1);
@@ -1675,26 +1695,21 @@ int ModApiMapgen::l_create_schematic(lua_State *L)
 				u8 prob = getintfield_default(L, -1, "prob", MTSCHEM_PROB_ALWAYS);
 				prob_list.emplace_back(pos, prob);
 			}
-
-			lua_pop(L, 1);
-		}
+		});
 	}
 
 	std::vector<std::pair<s16, u8> > slice_prob_list;
 	if (lua_istable(L, 5)) {
-		lua_pushnil(L);
-		while (lua_next(L, 5)) {
+		LuaHelper::for_ipairs(L, 5, [&]() {
 			if (lua_istable(L, -1)) {
 				s16 ypos = getintfield_default(L, -1, "ypos", 0);
 				u8 prob  = getintfield_default(L, -1, "prob", MTSCHEM_PROB_ALWAYS);
 				slice_prob_list.emplace_back(ypos, prob);
 			}
-
-			lua_pop(L, 1);
-		}
+		});
 	}
 
-	if (!schem.getSchematicFromMap(map, p1, p2)) {
+	if (!schem.getSchematicFromMap(&env->getMap(), p1, p2)) {
 		errorstream << "create_schematic: failed to get schematic "
 			"from map" << std::endl;
 		return 0;
@@ -1715,8 +1730,6 @@ int ModApiMapgen::l_create_schematic(lua_State *L)
 //     replacements, force_placement, flagstring)
 int ModApiMapgen::l_place_schematic(lua_State *L)
 {
-	MAP_LOCK_REQUIRED;
-
 	GET_ENV_PTR;
 
 	ServerMap *map = &(env->getServerMap());

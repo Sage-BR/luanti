@@ -8,9 +8,7 @@
 #include "log.h"
 #include "plain.h"
 #include "anaglyph.h"
-#include "interlaced.h"
 #include "sidebyside.h"
-#include "secondstage.h"
 #include "client/shadows/dynamicshadowsrender.h"
 
 #include <memory>
@@ -50,10 +48,6 @@ void createPipeline(const std::string &stereo_mode, IrrlichtDevice *device, Clie
 	}
 	if (stereo_mode == "anaglyph") {
 		populateAnaglyphPipeline(result.pipeline.get(), client);
-		return;
-	}
-	if (stereo_mode == "interlaced") {
-		populateInterlacedPipeline(result.pipeline.get(), client);
 		return;
 	}
 	if (stereo_mode == "sidebyside") {

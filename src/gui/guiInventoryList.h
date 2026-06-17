@@ -69,9 +69,11 @@ public:
 		const Options &options,
 		gui::IGUIFont *font);
 
-	virtual void draw() override;
+	void draw() override;
 
-	virtual bool OnEvent(const SEvent &event) override;
+	bool OnEvent(const SEvent &event) override;
+
+	bool isPointInside(const core::position2d<s32> &point) const override;
 
 	const InventoryLocation &getInventoryloc() const
 	{
@@ -100,7 +102,7 @@ public:
 		return m_slot_size;
 	}
 
-	// returns -1 if not item is at pos p
+	// returns -1 if no item is at pos p
 	s32 getItemIndexAtPos(v2s32 p) const;
 
 private:

@@ -5,17 +5,17 @@
 #pragma once
 
 #include "player.h"
-#include "environment.h"
 #include "constants.h"
 #include "lighting.h"
 #include <string>
 
 class Client;
+class ClientActiveObject;
 class Environment;
 class GenericCAO;
-class ClientActiveObject;
+class Map;
 struct CollisionInfo;
-struct collisionMoveResult;
+struct CollisionMoveResult;
 
 enum class LocalPlayerAnimation
 {
@@ -115,8 +115,6 @@ public:
 		m_cao = toset;
 	}
 
-	u32 maxHudId() const { return hud.size(); }
-
 	u16 getBreath() const { return m_breath; }
 	void setBreath(u16 breath) { m_breath = breath; }
 
@@ -175,7 +173,7 @@ private:
 	void old_move(f32 dtime, Environment *env,
 			std::vector<CollisionInfo> *collision_info);
 	void handleAutojump(f32 dtime, Environment *env,
-		const collisionMoveResult &result,
+		const CollisionMoveResult &result,
 		v3f position_before_move, v3f speed_before_move);
 
 	v3f m_position;

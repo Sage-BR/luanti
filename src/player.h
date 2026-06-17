@@ -6,12 +6,9 @@
 
 #include "irrlichttypes_bloated.h"
 #include "inventory.h"
-#include "constants.h"
 #include "util/basic_macros.h"
-#include "util/string.h"
-#include <mutex>
-#include <functional>
 #include <string>
+#include <string_view>
 
 #define PLAYERNAME_SIZE 20
 
@@ -27,7 +24,7 @@ struct PlayerFovSpec
 	// Whether to multiply the client's FOV or to override it
 	bool is_multiplier;
 
-	// The time to be take to trasition to the new FOV value.
+	// The time to be take to transition to the new FOV value.
 	// Transition is instantaneous if omitted. Omitted by default.
 	f32 transition_time = 0;
 
@@ -127,12 +124,14 @@ struct PlayerPhysicsOverride
 };
 
 /// @note numeric values are part of network protocol
-enum CameraMode {
+enum CameraMode : int {
 	// not a mode. indicates that any may be used.
 	CAMERA_MODE_ANY = 0,
 	CAMERA_MODE_FIRST,
 	CAMERA_MODE_THIRD,
-	CAMERA_MODE_THIRD_FRONT
+	CAMERA_MODE_THIRD_FRONT,
+
+	CameraMode_END // Dummy for validity check
 };
 
 extern const struct EnumString es_CameraMode[];
@@ -219,8 +218,8 @@ public:
 		return m_fov_override_spec;
 	}
 
+	const auto &getHudElements() const { return hud; }
 	HudElement* getHud(u32 id);
-	void        hudApply(std::function<void(const std::vector<HudElement*>&)> f);
 	u32         addHud(HudElement* hud);
 	HudElement* removeHud(u32 id);
 	void        clearHud();
@@ -237,12 +236,6 @@ protected:
 	u16 m_wield_index = 0;
 	PlayerFovSpec m_fov_override_spec = { 0.0f, false, 0.0f };
 
-	std::vector<HudElement *> hud;
-
 private:
-	// Protect some critical areas
-	// hud for example can be modified by EmergeThread
-	// and ServerThread
-	// FIXME: ^ this sounds like nonsense. should be checked.
-	std::mutex m_mutex;
+	std::vector<HudElement *> hud;
 };

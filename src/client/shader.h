@@ -7,10 +7,12 @@
 
 #include "irrlichttypes_bloated.h"
 #include <IMaterialRendererServices.h>
+#include "irr_ptr.h"
 #include <string>
 #include <map>
 #include <variant>
 #include "nodedef.h"
+#include "tile.h" // MaterialType
 
 /*
 	shader.{h,cpp}: Shader handling stuff.
@@ -51,26 +53,41 @@ public:
 	Abstraction for updating uniforms used by shaders
 */
 
-namespace video {
-	class IMaterialRendererServices;
-}
-
-
 class IShaderUniformSetter {
 public:
 	virtual ~IShaderUniformSetter() = default;
+	/**
+	 * Called when uniforms need to be updated
+	 * @param services interface for setting uniforms
+	 */
 	virtual void onSetUniforms(video::IMaterialRendererServices *services) = 0;
 	virtual void onSetMaterial(const video::SMaterial& material)
 	{ }
+};
+
+class IShaderUniformSetterRC : public IReferenceCounted, public IShaderUniformSetter
+{
+	// Reference counted variant for special use-cases
 };
 
 
 class IShaderUniformSetterFactory {
 public:
 	virtual ~IShaderUniformSetterFactory() = default;
-	virtual IShaderUniformSetter* create() = 0;
+	/**
+	 * Called to create an uniform setter for a specific shader
+	 * @param name name of the shader
+	 * @return new uniform setter (or nullptr). caller takes ownership.
+	 */
+	virtual IShaderUniformSetter *create(const std::string &name) = 0;
 };
 
+/*
+	Helpers to set uniforms only when changed.
+
+	Be warned that when using this you can't attach a IShaderUniformSetter to
+	multiple different shaders. But you probably don't want to anyway.
+*/
 
 template <typename T, std::size_t count, bool cache>
 class CachedShaderSetting {
@@ -210,13 +227,28 @@ using CachedStructPixelShaderSetting = CachedStructShaderSetting<T, count, cache
 	It is uniquely identified by a name, base material and the input constants.
 */
 
+struct ShaderFeatures {
+	/// Enable support for array textures,
+	/// texture indices are expected in the Aux vertex attribute.
+	bool array_texture = false;
+	/// Enable hardware skinning support (mesh animation);
+	/// static meshes will still render as expected.
+	/// Joint transforms are expected in the JointMatrices UBO.
+	/// @see irr::video::IVideoDriver::setJointTransforms
+	bool skinning = false;
+
+	void setConstants(ShaderConstants &consts) const;
+};
+
 struct ShaderInfo {
 	std::string name;
-	video::E_MATERIAL_TYPE base_material = video::EMT_SOLID;
+	video::E_MATERIAL_TYPE base_material = video::EMT_INVALID;
 	// Material ID the shader has received from Irrlicht
-	video::E_MATERIAL_TYPE material = video::EMT_SOLID;
+	video::E_MATERIAL_TYPE material = video::EMT_INVALID;
 	// Input constants
 	ShaderConstants input_constants;
+	// Extra uniform callback
+	irr_ptr<IShaderUniformSetterRC> setter_cb;
 };
 
 class IShaderSource {
@@ -239,15 +271,18 @@ public:
 	 * @param name name of the shader (directory on disk)
 	 * @param input_const primary key constants for this shader
 	 * @param base_mat base material to use
+	 * @param setter_cb additional uniform setter to use
 	 * @return shader ID
 	 * @note `base_material` only controls alpha behavior
 	 */
 	virtual u32 getShader(const std::string &name,
-		const ShaderConstants &input_const, video::E_MATERIAL_TYPE base_mat) = 0;
+		const ShaderConstants &input_const, video::E_MATERIAL_TYPE base_mat,
+		IShaderUniformSetterRC *setter_cb = nullptr) = 0;
 
-	/// @brief Helper: Generates or gets a shader suitable for nodes and entities
+	/// Helper: Generates or gets a shader suitable for nodes and entities.
 	u32 getShader(const std::string &name,
-		MaterialType material_type, NodeDrawType drawtype = NDT_NORMAL);
+		MaterialType material_type, NodeDrawType drawtype = NDT_NORMAL,
+		const ShaderFeatures &features = {});
 
 	/**
 	 * Helper: Generates or gets a shader for common, general use.
@@ -255,12 +290,20 @@ public:
 	 * @param blendAlpha enable alpha blending for this material?
 	 * @return shader ID
 	 */
-	inline u32 getShaderRaw(const std::string &name, bool blendAlpha = false)
+	inline u32 getShaderRaw(const std::string &name, bool blendAlpha = false,
+			const ShaderFeatures &features = {})
 	{
 		auto base_mat = blendAlpha ? video::EMT_TRANSPARENT_ALPHA_CHANNEL :
 			video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
-		return getShader(name, ShaderConstants(), base_mat);
+		ShaderConstants consts;
+		features.setConstants(consts);
+		return getShader(name, consts, base_mat);
 	}
+
+	/**
+	 * @brief Returns true if 'sampler2DArray' is supported in GLSL
+	 */
+	virtual bool supportsSampler2DArray() const = 0;
 };
 
 class IWritableShaderSource : public IShaderSource {
